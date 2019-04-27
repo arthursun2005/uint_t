@@ -7,9 +7,12 @@
 //
 
 #include <iostream>
+#include "uint_t.h"
 
 int main(int argc, const char * argv[]) {
-    // insert code here...
-    std::cout << "Hello, World!\n";
+    uint_t j = uint_t(111111L) * 111111;
+    printf("%lu\n", uint_t::base * j[1] + j[0]);
+    printf("%lu\n", 1L << 63);
+    printf("%llu\n", 111111llu * 111111);
     return 0;
 }
