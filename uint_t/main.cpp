@@ -14,17 +14,15 @@ int main(int argc, const char * argv[]) {
     
     unsigned long a = clock();
     
-    
     for(int i = 2; i <= 6000; ++i) {
         j *= i;
     }
     
-    
     unsigned long b = clock();
-    
+
     printf("%lu\n", b - a);
 
-    printf("%lu\n", j.uint2());
+    //printf("%lu\n", j.uint2());
     //printf("%s\n", j.toString(10).c_str());
     //printf("%lu\n", 1L << 47);
     //printf("%llu\n", 11111111llu * 11111111);

@@ -17,6 +17,7 @@
 #include <string>
 #include <cstdlib>
 #include <cmath>
+#include <vector>
 
 class uint_t
 {
@@ -38,6 +39,8 @@ public:
     
     static const uintk karatsuba_threshold = 32;
     
+    static std::vector<uint_t> powerCache[1 << CHAR_BIT];
+    
 private:
     
     uintk *data;
@@ -45,6 +48,20 @@ private:
     uintk size;
     
     uintk capacity;
+    
+    /// returns radix ^ (2 ^ exp)
+    static const uint_t& getPower(uintk radix, uintk exp) {
+        std::vector<uint_t>& line = powerCache[radix];
+        
+        if(line.size() == 0)
+            line.push_back(radix);
+        
+        for(uintk i = (uintk)line.size(); i <= exp; ++i) {
+            line[i] = (line[i - 1] << 1);
+        }
+        
+        return line[exp];
+    }
     
     /// exclusive
     inline uint_t lowerBits(uintk position) const {
@@ -143,7 +160,7 @@ private:
         return result;
     }
     
-    static void toString(const uint_t& x, uintk radix, uintk digits, std::string* str) {
+    static void toString(const uint_t& x, uintk radix, int digits, std::string* str) {
         if(x.getSize() == 0)
             return;
         
@@ -161,9 +178,19 @@ private:
             return;
         }
         
-        uintk bitLength = 1;
+        uintk bitLength = x.size * bits;
         
         uintk _n = log(bitLength * M_LN2 / log(radix)) / M_LN2 - 0.5f;
+        
+        uint_t p = getPower(radix, _n);
+        /*
+        auto pair = x.quotientAndReminder(p);
+        
+        int k = 1 << _n;
+        
+        toString(pair.first, radix, digits - k, str);
+        toString(pair.second, radix, k, str);
+         */
     }
 
 public:
@@ -234,6 +261,9 @@ public:
     }
     
     std::string toString(uintk radix) const {
+        if(radix >= (1 << CHAR_BIT))
+            radix = 10;
+        
         std::string str;
         toString(*this, radix, 0, &str);
         return str;
@@ -297,42 +327,152 @@ public:
     }
     
     
+    void multiplyByUint (uintk b) {
+        if(size == 0 || b == 0) {
+            size = 0;
+            return;
+        }
+        
+        uintk carry = 0;
+        for(uintk i = 0; i < size; ++i) {
+            uintk2 product = uintk2(data[i]) * b + carry;
+            data[i] = product & mask;
+            carry = product >> bits;
+        }
+        
+        if(carry > 0)
+            push(carry);
+    }
+    
+    void add (const uint_t& b) {
+        uintk carry = 0;
+        uintk i = 0;
+        
+        uintk sizeB = b.getSize();
+        
+        uintk2 sum;
+        
+        while(true) {
+            if(i >= size && i >= sizeB) {
+                if(carry != 0)
+                    data[i] = carry;
+                
+                return;
+            }
+            
+            if(i >= size) {
+                if(carry == 0) {
+                    realloc(sizeB);
+                    size = sizeB;
+                    memcpy(data + i, b.begin() + i, sizeof(uintk) * (sizeB - i));
+                    return;
+                }
+                sum = uintk2(b[i]) + carry;
+            }else if(i >= sizeB) {
+                if(carry == 0)
+                    return;
+                
+                sum = uintk2(data[i]) + carry;
+            }else{
+                sum = uintk2(data[i]) + b[i] + carry;
+            }
+            
+            data[i] = (sum & mask);
+            carry = sum >> bits;
+            ++i;
+        }
+        
+        size = i;
+    }
+    
+    void subtract (const uint_t& b) {
+        uintk borrow = 0;
+        uintk i = 0;
+        
+        uintk sizeB = b.getSize();
+        
+        if(size == 0 || size < sizeB) {
+            size = 0;
+            return;
+        }
+        
+        if(b.isUint(0))
+            return;
+        
+        while(true) {
+            if(i >= sizeB && borrow == 0) {
+                if(i >= size)
+                    size = i - 1;
+                return;
+            }
+            
+            uintk2 td = uintk2(i >= sizeB ? 0 : b[i]) + borrow;
+            
+            if(data[i] < td) {
+                if(i >= size - 1) {
+                    size = 0;
+                    return;
+                }
+                
+                data[i] = (uintk)(base + data[i] - td);
+                borrow = 1;
+            }else{
+                data[i] = (uintk)(data[i] - td);
+                borrow = 0;
+            }
+            
+            ++i;
+        }
+        
+        size = i;
+    }
+    
+    
     
     
     /// operators
     
     inline uint_t& operator += (const uint_t& a) {
-        return (*this = *this + a);
+        add(a);
+        return *this;
     }
     
     inline uint_t& operator -= (const uint_t& a) {
-        return (*this = *this - a);
+        subtract(a);
+        return *this;
     }
     
     inline uint_t& operator ++ () {
-        return (*this = *this + 1);
+        add(1);
+        return *this;
     }
     
     inline uint_t& operator -- () {
-        return (*this = *this - 1);
+        subtract(1);
+        return *this;
+    }
+    
+    inline uint_t& operator *= (uintk a) {
+        multiplyByUint(a);
+        return *this;
     }
     
     inline uint_t& operator *= (const uint_t& a) {
         return (*this = *this * a);
     }
     
-    inline uint_t operator << (uintk x) const {
-        return uint_t(*this).shiftLeft(x);
+    inline uint_t operator << (uintk x) {
+        return shiftLeft(x);
     }
     
-    inline uint_t operator >> (uintk x) const {
-        return uint_t(*this).shiftRight(x);
+    inline uint_t operator >> (uintk x) {
+        return shiftRight(x);
     }
     
     /**
      * dividing digit by digit
      */
-    std::pair<uint_t, uintk> quotientAndReminder (uintk b) const {
+    std::pair<uint_t, uintk> quotientAndReminderUint (uintk b) const {
         std::pair<uint_t, uintk> result;
         
         uintk mod = 0;
@@ -357,6 +497,35 @@ public:
         }
         
         result.second = mod;
+
+        return result;
+    }
+    
+    std::pair<uint_t, uint_t> quotientAndReminderN (const uint_t& b) const {
+        std::pair<uint_t, uint_t> result;
+        
+        uintk m = 1l << (bits - 1);
+        
+        return result;
+    }
+    
+    std::pair<uint_t, uint_t> quotientAndReminder (const uint_t& b) const {
+        char comp = compare(*this, b);
+        
+        if(b.isUint(0)) {
+            throw "divisor is zero";
+            return std::pair<uint_t, uint_t>(0, 0);
+        }
+        
+        if(comp == 0)
+            return std::pair<uint_t, uint_t>(1, 0);
+        
+        if(comp == -1)
+            return std::pair<uint_t, uint_t>(0, 0);
+        
+        std::pair<uint_t, uint_t> result;
+        
+        
         
         return result;
     }
@@ -364,6 +533,8 @@ public:
     
     /// friend functions
     
+    
+    /// return sign(a - b)
     friend char compare (const uint_t& a, const uint_t& b) {
         if(a.getSize() > b.getSize())
             return 1;
@@ -390,48 +561,8 @@ public:
      * adding each digit in base (2 ^ bits)
      */
     friend uint_t operator + (const uint_t& a, const uint_t& b) {
-        uint_t result;
-        
-        uintk carry = 0;
-        uintk i = 0;
-        
-        uintk sizeA = a.getSize();
-        uintk sizeB = b.getSize();
-        
-        uintk2 sum;
-        
-        while(true) {
-            
-            if(i >= sizeA && i >= sizeB) {
-                if(carry != 0) result.push(carry);
-                break;
-            }
-            
-            if(i >= sizeA) {
-                if(carry == 0) {
-                    result.realloc(sizeB);
-                    result.size = sizeB;
-                    memcpy(result.begin() + i, b.begin() + i, sizeof(uintk) * (sizeB - i));
-                    break;
-                }
-                sum = uintk2(b[i]) + carry;
-            }else if(i >= sizeB) {
-                if(carry == 0) {
-                    result.realloc(sizeA);
-                    result.size = sizeA;
-                    memcpy(result.begin() + i, a.begin() + i, sizeof(uintk) * (sizeA - i));
-                    break;
-                }
-                sum = uintk2(a[i]) + carry;
-            }else{
-                sum = uintk2(a[i]) + b[i] + carry;
-            }
-            
-            result.push(sum & mask);
-            carry = sum >> bits;
-            ++i;
-        }
-        
+        uint_t result(a);
+        result.add(b);
         return result;
     }
     
@@ -439,63 +570,14 @@ public:
      * subtracting each digit in base (2 ^ bits)
     */
     friend uint_t operator - (const uint_t& a, const uint_t& b) {
-        uint_t result;
-        
-        uintk borrow = 0;
-        uintk i = 0;
-        
-        uintk sizeA = a.getSize();
-        uintk sizeB = b.getSize();
-        
-        if(sizeA < sizeB)
-            return result;
-        
-        while(true) {
-            if(i >= sizeB && borrow == 0) {
-                if(i >= sizeA) break;
-                result.realloc(a.getSize());
-                result.size = a.getSize();
-                memcpy(result.begin() + i, a.begin() + i, sizeof(uintk) * (sizeA - i));
-                break;
-            }
-            
-            uintk2 td = uintk2(i >= sizeB ? 0 : b[i]) + borrow;
-            
-            if(a[i] < td) {
-                if(i >= sizeA - 1)
-                    return uint_t();
-                
-                result.push((uintk)(base + a[i] - td));
-                borrow = 1;
-            }else{
-                result.push((uintk)(a[i] - td));
-                borrow = 0;
-            }
-            
-            ++i;
-        }
-        
+        uint_t result(a);
+        result.subtract(b);
         return result;
     }
     
     friend uint_t multiplyUint (const uint_t& a, uintk b) {
-        uint_t result;
-        
-        uintk an = a.getSize();
-        
-        if(an == 0 || b == 0)
-            return uint_t();
-        
-        uintk carry = 0;
-        for(uintk i = 0; i < an; ++i) {
-            uintk2 product = uintk2(a[i]) * b + carry;
-            result.push(product & mask);
-            carry = product >> bits;
-        }
-        
-        if(carry > 0)
-            result.push(carry);
-        
+        uint_t result = a;
+        result.multiplyByUint(b);
         return result;
     }
     
@@ -573,5 +655,7 @@ public:
         return karatsubaMultiply(a, b);
     }
 };
+
+std::vector<uint_t> uint_t::powerCache[1 << CHAR_BIT];
 
 #endif /* uint_t_h */
