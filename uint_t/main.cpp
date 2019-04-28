@@ -10,9 +10,23 @@
 #include "uint_t.h"
 
 int main(int argc, const char * argv[]) {
-    uint_t j = uint_t(111111L) * 111111;
-    printf("%lu\n", uint_t::base * j[1] + j[0]);
-    printf("%lu\n", 1L << 63);
-    printf("%llu\n", 111111llu * 111111);
+    uint_t j = 1;
+    
+    unsigned long a = clock();
+    
+    
+    for(int i = 2; i <= 6000; ++i) {
+        j *= i;
+    }
+    
+    
+    unsigned long b = clock();
+    
+    printf("%lu\n", b - a);
+
+    printf("%lu\n", j.uint2());
+    //printf("%s\n", j.toString(10).c_str());
+    //printf("%lu\n", 1L << 47);
+    //printf("%llu\n", 11111111llu * 11111111);
     return 0;
 }
